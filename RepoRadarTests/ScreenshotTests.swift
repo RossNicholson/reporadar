@@ -26,7 +26,7 @@ final class ScreenshotTests: XCTestCase {
         let prefs = Preferences(defaults: defaults)
         prefs.folders = folders + unavailable
         prefs.lastFetched = Date().addingTimeInterval(-25 * 60)
-        prefs.editorApp = "com.microsoft.VSCode"
+        prefs.editorApp = AppChoice.installedEditors.first?.bundleID
         let store = RepoStore(prefs: prefs)
         store.showDemo(repos, unavailable: unavailable)
         return (store, prefs)
@@ -97,6 +97,28 @@ final class ScreenshotTests: XCTestCase {
         try Snapshot.png(icons, size: NSSize(width: 180, height: 110), to: out.appendingPathComponent("menubar-icon.png"))
     }
 
+    /// Pieces for the website: the menu bar, the reminder, a hovered row and the share card
+    func testRenderWebsiteImages() throws {
+        let out = try outputFolder("SCREENSHOTS")
+        try Snapshot.png(MenuBarStrip(), size: NSSize(width: 336, height: 34), to: out.appendingPathComponent("menubar.png"),
+                         transparent: true)
+        try Snapshot.png(ReminderBanner().frame(width: 380, height: 116), size: NSSize(width: 380, height: 116), to: out.appendingPathComponent("notification.png"),
+                         transparent: true)
+
+        let (store, prefs) = demo()
+        let weather = Demo.repos[0]
+        let row = RepoRow(repo: weather, previewHover: true)
+            .environmentObject(store)
+            .environmentObject(prefs)
+            .frame(width: 302)
+            .padding(14)
+            .background(AppColors.ground)
+        try Snapshot.png(row, size: NSSize(width: 330, height: 118), to: out.appendingPathComponent("row-hover.png"))
+
+        try Snapshot.png(ShareCard(), size: NSSize(width: 1200, height: 630), to: out.appendingPathComponent("og-image.png"),
+                         exactPixels: true)
+    }
+
     /// The app icon: the mascot on a butter squircle, at every size
     func testAppIcon() throws {
         let dir = try outputFolder("ICON_DIR")
@@ -129,5 +151,73 @@ private struct AppIcon: View {
             }
             .frame(width: side, height: side)
         }
+    }
+}
+
+/// A slice of a dark menu bar with RepoRadar's icon and count
+private struct MenuBarStrip: View {
+    var body: some View {
+        HStack(spacing: 18) {
+            HStack(spacing: 3) {
+                Image(nsImage: MenuBarIcon.image(blip: true)).renderingMode(.template)
+                Text("5").font(.system(size: 13, weight: .medium)).monospacedDigit()
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
+            Image(systemName: "wifi").font(.system(size: 13, weight: .semibold))
+            Image(systemName: "battery.75percent").font(.system(size: 15))
+            Text("Thu 12 Nov   17:30").font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .frame(width: 336, height: 34, alignment: .trailing)
+        .background(LinearGradient(colors: [Color(hex: 0x3A3F55), Color(hex: 0x2B2F40)], startPoint: .leading, endPoint: .trailing),
+                    in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+/// The end-of-day notification as macOS shows it
+private struct ReminderBanner: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            AppIcon().frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text("4 repos have loose ends").font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Text("now").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Text("weather-app, portfolio-site and 2 more have work that isn't committed or pushed.")
+                    .font(.system(size: 12))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .foregroundStyle(Color(hex: 0x232428))
+        .padding(14)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+        .padding(12)
+        .environment(\.colorScheme, .light)
+    }
+}
+
+/// The 1200×630 card shown when the page is shared
+private struct ShareCard: View {
+    var body: some View {
+        HStack(spacing: 40) {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("RepoRadar").font(.display(44, relativeTo: .title)).textCase(.uppercase).opacity(0.7)
+                Text("Every repo with\nwork you haven't\npushed").font(.display(84, relativeTo: .largeTitle)).textCase(.uppercase)
+                    .lineSpacing(-6)
+                Text("A menu bar app for your Mac").font(.mono(22))
+            }
+            Spacer(minLength: 0)
+            Mascot(size: 400, disc: Color.white.opacity(0.45))
+        }
+        .foregroundStyle(AppColors.ink)
+        .padding(.horizontal, 80)
+        .frame(width: 1200, height: 630)
+        .background(AppColors.butter)
     }
 }

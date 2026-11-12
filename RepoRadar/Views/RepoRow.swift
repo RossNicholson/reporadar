@@ -21,6 +21,8 @@ struct RepoRow: View {
     @EnvironmentObject private var prefs: Preferences
     let repo: RepoStatus
     var snoozed = false
+    /// Shows the hover buttons without a mouse, for screenshots
+    var previewHover = false
     @State private var hovered = false
 
     var body: some View {
@@ -48,7 +50,7 @@ struct RepoRow: View {
                 .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if hovered {
+            if hovered || previewHover {
                 quickButtons
             }
         }
