@@ -98,7 +98,7 @@ make build       # unsigned debug build
 
 `make run` builds a signed debug copy and opens it (it signs with Ross's Developer ID; change `DEVELOPMENT_TEAM` in the Makefile for yours). Launch with `-demo YES` for sample repos. `make screenshots` renders the panel with demo data into `build/screenshots`.
 
-The look comes from [HouseStyle](https://github.com/RossNicholson/mac-house-style), shared with Ross's other Mac apps: [BrewDock](https://github.com/RossNicholson/brewdock), [ClawdBar](https://github.com/RossNicholson/clawdbar), [Mop Up](https://github.com/RossNicholson/mop-up) and [KeyBar](https://github.com/RossNicholson/keybar).
+The look comes from [HouseStyle](https://github.com/RossNicholson/mac-house-style), shared with Ross's other Mac apps: [BrewDock](https://github.com/RossNicholson/brewdock), [ClawdBar](https://github.com/RossNicholson/clawdbar), [Mop Up](https://github.com/RossNicholson/mop-up), [KeyBar](https://github.com/RossNicholson/keybar) and [MacPing](https://github.com/RossNicholson/macping).
 
 ## Licence
 
