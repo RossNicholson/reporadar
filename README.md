@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/icon.png" alt="RepoRadar icon: a little radar dish with a smiling face" width="128" height="128">
+  <img src="docs/icon.png" alt="Repo Radar icon: a little radar dish with a smiling face" width="128" height="128">
 </p>
 
-<h1 align="center">RepoRadar</h1>
+<h1 align="center">Repo Radar</h1>
 
 <p align="center">
   <strong>Every repo with work you haven't pushed, in your menu bar.</strong><br>
@@ -20,7 +20,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/panel-dark.png">
-    <img src="docs/panel.png" alt="RepoRadar's menu bar panel: repos as pastel cards, such as weather-app with 4 changed, 2 new and 3 unpushed, and portfolio-site stuck mid-rebase" width="330">
+    <img src="docs/panel.png" alt="Repo Radar's menu bar panel: repos as pastel cards, such as weather-app with 4 changed, 2 new and 3 unpushed, and portfolio-site stuck mid-rebase" width="330">
   </picture>
 </p>
 
@@ -44,7 +44,7 @@ brew install --cask reporadar
 
 Homebrew 7 asks you to trust casks from other taps before installing them. On older versions of Homebrew, skip the `brew trust` line.
 
-**Requirements:** macOS 14 Sonoma or later, and git: Homebrew's, or Apple's from the Command Line Tools (RepoRadar offers to install them if neither is there).
+**Requirements:** macOS 14 Sonoma or later, and git: Homebrew's, or Apple's from the Command Line Tools (Repo Radar offers to install them if neither is there).
 
 ## What it flags
 
@@ -76,15 +76,15 @@ Under **Worth a look**, without counting in the menu bar: **Behind** (commits on
 - **End-of-day reminder.** A notification at a time you pick if repos still have loose ends, oldest first.
 - **Snooze or ignore.** Snooze a repo for a day or a week, or ignore it for good (Settings lists ignored repos so you can bring them back).
 
-RepoRadar only reads, until you click Push, Pull or Put on GitHub. It never commits, never force-pushes, and Pull only fast-forwards, so it can't overwrite your work or rewrite history. Otherwise `git fetch` is the only command it runs that talks to a remote, and that only updates remote-tracking branches.
+Repo Radar only reads, until you click Push, Pull or Put on GitHub. It never commits, never force-pushes, and Pull only fast-forwards, so it can't overwrite your work or rewrite history. Otherwise `git fetch` is the only command it runs that talks to a remote, and that only updates remote-tracking branches.
 
 <p align="center">
-  <img src="docs/settings.png" alt="RepoRadar's settings: watched folders, where clicking a repo opens it, background fetch, the end-of-day reminder, ignored repos, launch at login and updates" width="300">
+  <img src="docs/settings.png" alt="Repo Radar's settings: watched folders, where clicking a repo opens it, background fetch, the end-of-day reminder, ignored repos, launch at login and updates" width="300">
 </p>
 
 ## Privacy
 
-RepoRadar has no accounts and no analytics. It runs git on your Mac and keeps its settings in its own preferences. The only network traffic is git talking to your own remotes, using your existing git sign-in: `git fetch` (when you fetch, or in the background if you turn that on) and Push or Pull when you click them; GitHub CLI creating a repo when you click Put on GitHub; and **Check for updates** in Settings, only when you press it (through Homebrew, or GitHub if you downloaded the app directly).
+Repo Radar has no accounts and no analytics. It runs git on your Mac and keeps its settings in its own preferences. The only network traffic is git talking to your own remotes, using your existing git sign-in: `git fetch` (when you fetch, or in the background if you turn that on) and Push or Pull when you click them; GitHub CLI creating a repo when you click Put on GitHub; and **Check for updates** in Settings, only when you press it (through Homebrew, or GitHub if you downloaded the app directly).
 
 ## Build from source
 
