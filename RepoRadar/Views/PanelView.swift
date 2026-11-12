@@ -30,7 +30,7 @@ struct PanelView: View {
     // MARK: - Header
 
     private var header: some View {
-        PanelHeader(title: "RepoRadar", subtitle: headline) {
+        PanelHeader(title: "Repo Radar", subtitle: headline) {
             ScanningMascot(busy: store.isScanning || store.isFetching,
                            mood: store.attentionCount > 0 ? .alert : .happy)
         } actions: {
