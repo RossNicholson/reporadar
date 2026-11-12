@@ -194,6 +194,19 @@ final class GitTests: XCTestCase {
         XCTAssertFalse(repo.needsAttention, "an empty repo with no remote has nothing to lose")
     }
 
+    func testEmptyCloneHasNoGoneUpstream() async throws {
+        let remote = folder("bare.git")
+        try sh(["init", "--bare", remote], in: root.path)
+        let clone = folder("empty-clone")
+        try sh(["clone", remote, clone], in: root.path, allowFailure: true)
+        try write("x", to: "a.txt", in: clone)
+        let repo = await inspect(clone)
+        XCTAssertFalse(repo.hasCommits)
+        XCTAssertFalse(repo.upstreamGone, "before the first commit there's nothing for the upstream to be")
+        XCTAssertEqual(repo.untracked, 1)
+        XCTAssertTrue(repo.needsAttention)
+    }
+
     func testStash() async throws {
         let (_, clone) = try clonedRepo()
         try write("wip", to: "README.md", in: clone)

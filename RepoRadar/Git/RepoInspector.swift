@@ -111,8 +111,9 @@ enum StatusParser {
             default: break
             }
         }
-        // git leaves out ahead/behind when the upstream branch no longer exists
-        repo.upstreamGone = repo.upstream != nil && !sawAheadBehind
+        // git leaves out ahead/behind when the upstream branch no longer
+        // exists, and also before the first commit, when there's nothing to compare
+        repo.upstreamGone = repo.upstream != nil && !sawAheadBehind && repo.hasCommits
     }
 
     /// Reads `git config --get-regexp ^remote\..*\.url$`

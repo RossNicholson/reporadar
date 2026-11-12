@@ -72,9 +72,10 @@ struct RepoRow: View {
         var parts: [String] = []
         if let branch = repo.branch {
             parts.append(branch)
-        } else if repo.hasCommits {
-            parts.append("detached HEAD")
         } else {
+            parts.append("detached HEAD")
+        }
+        if !repo.hasCommits {
             parts.append("no commits yet")
         }
         if let last = repo.lastCommit {
