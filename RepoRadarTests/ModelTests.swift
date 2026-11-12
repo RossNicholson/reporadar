@@ -263,23 +263,29 @@ final class DetailAndActionTests: XCTestCase {
     }
 
     func testUnpushedBranchesParse() {
-        let commits = StatusParser.unpushedCommits("100\trefs/heads/feature\n200\trefs/heads/main\n300\trefs/heads/feature\n")
+        let commits = StatusParser.unpushedCommits("aaa\t100\nbbb\t200\nccc\t300\n")
         XCTAssertEqual(commits.count, 3)
+        XCTAssertEqual(commits["bbb"], Date(timeIntervalSince1970: 200))
         let refs = [
-            "main\torigin/main\t[ahead 1]\torigin\trefs/heads/main",
-            "feature\t\t\t\t",
-            "old\torigin/old\t[gone]\torigin\trefs/heads/old",
-            "local\tmain\t\t.\trefs/heads/main",
+            "main\taaa\torigin/main\t[ahead 1]\torigin",
+            "feature\tbbb\t\t\t",
+            "old\tccc\torigin/old\t[gone]\torigin",
+            "local\taaa\tmain\t\t.",
+            "pushed\tzzz\torigin/pushed\t\torigin",
+            "forked\tbbb\torigin/main\t\tfork",
         ].joined(separator: "\n")
-        let branches = StatusParser.unpushedBranches(commits + [.init(date: Date(), branch: "old"), .init(date: Date(), branch: "local")],
-                                                     refs: refs, current: "main")
-        XCTAssertEqual(branches.map(\.name), ["main", "feature", "local", "old"])
-        XCTAssertEqual(branches[1].commits, 2)
+        let branches = StatusParser.unpushedBranches(refs, unpushed: Set(commits.keys))
+        XCTAssertEqual(branches.map(\.name), ["main", "feature", "old", "local", "forked"], "only branches whose tip is unpushed")
+        XCTAssertEqual(branches[0].remote, "origin")
         XCTAssertNil(branches[1].upstream)
-        XCTAssertEqual(branches[0].remoteRef, "refs/heads/main")
-        XCTAssertTrue(branches[3].upstreamGone)
-        XCTAssertEqual(branches[2].upstream, "main")
-        XCTAssertNil(branches[2].remote, "a branch tracking a local branch has no remote to push back to")
+        XCTAssertTrue(branches[2].upstreamGone)
+        XCTAssertEqual(branches[3].upstream, "main")
+        XCTAssertNil(branches[3].remote, "a branch tracking a local branch has no remote")
+        XCTAssertEqual(branches[4].remote, "fork", "git's push remote, not the upstream's")
+
+        var counted = branches
+        counted[1].commits = 5
+        XCTAssertEqual(StatusParser.ordered(counted, current: "local").map(\.name), ["local", "feature", "forked", "main", "old"])
     }
 
     func testWaiting() {
@@ -331,7 +337,11 @@ final class DetailAndActionTests: XCTestCase {
 
         XCTAssertFalse(repo.canPublish)
         var local = RepoStatus(path: "/r/local")
+        local.branch = "main"
         XCTAssertTrue(local.canPublish)
+        local.branch = nil
+        XCTAssertFalse(local.canPublish, "gh pushes the current branch, so a detached HEAD can't be published")
+        local.branch = "main"
         local.hasCommits = false
         XCTAssertFalse(local.canPublish)
     }
@@ -349,11 +359,34 @@ final class DetailAndActionTests: XCTestCase {
     func testMessages() {
         XCTAssertTrue(RepoActions.explainPush(" ! [rejected] main -> main (fetch first)", branch: "main").contains("Pull them in first"))
         XCTAssertTrue(RepoActions.explainPush("git@github.com: Permission denied (publickey).", branch: "main").contains("sign in"))
+        XCTAssertEqual(RepoActions.explainPush("!\trefs/heads/main:refs/heads/main\t[remote rejected] (protected branch hook declined)", branch: "main"),
+                       "The remote refused main: protected branch hook declined.")
         XCTAssertTrue(RepoActions.explainPull("fatal: Not possible to fast-forward, aborting.").contains("both moved on"))
         XCTAssertTrue(RepoActions.explainPull("error: Your local changes to the following files would be overwritten by merge").contains("Commit or stash"))
         XCTAssertEqual(RepoActions.firstError(in: "To x\nerror: failed to push some refs\nhint: y"), "failed to push some refs")
         XCTAssertTrue(GitHubCLI.explain("To get started with GitHub CLI, please run:  gh auth login", name: "x").contains("gh auth login"))
         XCTAssertTrue(GitHubCLI.explain("GraphQL: Name already exists on this account (createRepository)", name: "x").contains("already have a repo called x"))
+    }
+
+    func testLooseSinceIsRemembered() {
+        let now = Date()
+        var repo = RepoStatus(path: "/r")
+        repo.branch = "main"
+        repo.changed = 1
+        repo.remotes = [.init(name: "origin", url: "u")]
+        repo.looseSince = now.addingTimeInterval(-86_400 * 9)
+        var (status, since) = RepoStore.remembering(repo, since: nil)
+        XCTAssertEqual(since, repo.looseSince)
+
+        // The old file is edited again today: still waiting since 9 days ago
+        repo.looseSince = now
+        (status, since) = RepoStore.remembering(repo, since: since)
+        XCTAssertEqual(status.looseSince, now.addingTimeInterval(-86_400 * 9))
+
+        // Committed and pushed: forgotten, so the next loose end starts fresh
+        repo.changed = 0
+        (status, since) = RepoStore.remembering(repo, since: since)
+        XCTAssertNil(since)
     }
 
     func testRepoName() {

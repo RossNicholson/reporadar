@@ -33,16 +33,12 @@ struct GitHubCLI: Sendable {
 
         let arguments = ["repo", "create", name, isPrivate ? "--private" : "--public",
                          "--source", repo.path, "--remote", "origin", "--push"]
-        let executable = self.executable
-        let path = repo.path
-        let env = environment
-        let result = await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                continuation.resume(returning: Result {
-                    try Git.runProcess(executable: executable, arguments: arguments, directory: path,
-                                       environment: env, timeout: 120)
-                })
-            }
+        let result: Result<Git.Output, Error>
+        do {
+            result = .success(try await Git.runInBackground(executable: executable, arguments: arguments,
+                                                            directory: repo.path, environment: environment, timeout: 120))
+        } catch {
+            result = .failure(error)
         }
         switch result {
         case .success(let output) where output.succeeded:

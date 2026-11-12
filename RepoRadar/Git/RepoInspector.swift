@@ -20,20 +20,26 @@ enum RepoInspector {
                 repo.lastCommit = Date(timeIntervalSince1970: seconds)
             }
 
-            // Every commit on a local branch that no remote has, with its time
-            // and the branch it was found on. Without a remote that's every
-            // commit, which "No remote" already says.
+            // Every commit on a local branch that no remote has, with its time.
+            // Without a remote that's every commit, which "No remote" already says.
             var oldestCommit: Date?
             if repo.hasRemote && repo.hasCommits {
-                let log = try await git.run(["log", "--branches", "--not", "--remotes", "--source", "--format=%ct%x09%S"], in: path)
+                let log = try await git.run(["log", "--branches", "--not", "--remotes", "--format=%H%x09%ct"], in: path)
                 let commits = StatusParser.unpushedCommits(log.text)
                 repo.unpushed = commits.count
-                oldestCommit = commits.map(\.date).min()
+                oldestCommit = commits.values.min()
                 if !commits.isEmpty {
                     let refs = try await git.run(["for-each-ref", "refs/heads",
-                                                  "--format=%(refname:short)%09%(upstream:short)%09%(upstream:track)%09%(upstream:remotename)%09%(upstream:remoteref)"],
+                                                  "--format=%(refname:lstrip=2)%09%(objectname)%09%(upstream:short)%09%(upstream:track)%09%(push:remotename)"],
                                                  in: path)
-                    repo.unpushedBranches = StatusParser.unpushedBranches(commits, refs: refs.text, current: repo.branch)
+                    // A branch has unpushed work exactly when its tip is unpushed.
+                    // Each is counted on its own, since branches can share commits.
+                    var branches = StatusParser.unpushedBranches(refs.text, unpushed: Set(commits.keys))
+                    for index in branches.indices {
+                        let count = try await git.run(["rev-list", "--count", "refs/heads/\(branches[index].name)", "--not", "--remotes"], in: path)
+                        branches[index].commits = Int(count.text.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+                    }
+                    repo.unpushedBranches = StatusParser.ordered(branches, current: repo.branch)
                 }
             }
             repo.looseSince = ([oldestCommit] + editDates(of: repo.changedFiles, in: path)).compactMap { $0 }.min()
@@ -157,47 +163,38 @@ enum StatusParser {
         repo.upstreamGone = repo.upstream != nil && !sawAheadBehind && repo.hasCommits
     }
 
-    struct UnpushedCommit: Equatable {
-        let date: Date
-        /// The branch git reached it from first
-        let branch: String
-    }
-
-    /// Reads `git log --source --format=%ct%x09%S`
-    static func unpushedCommits(_ output: String) -> [UnpushedCommit] {
-        output.split(separator: "\n").compactMap { line in
+    /// Reads `git log --format=%H%x09%ct`: each commit's hash and time
+    static func unpushedCommits(_ output: String) -> [String: Date] {
+        var commits: [String: Date] = [:]
+        for line in output.split(separator: "\n") {
             let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
-            guard parts.count == 2, let seconds = TimeInterval(parts[0]) else { return nil }
-            let branch = parts[1].hasPrefix("refs/heads/") ? String(parts[1].dropFirst("refs/heads/".count)) : parts[1]
-            return UnpushedCommit(date: Date(timeIntervalSince1970: seconds), branch: branch)
+            guard parts.count == 2, let seconds = TimeInterval(parts[1]) else { continue }
+            commits[parts[0]] = Date(timeIntervalSince1970: seconds)
         }
+        return commits
     }
 
-    /// The branches the unpushed commits are on, the current one first, with
-    /// each one's upstream from `git for-each-ref` (name, upstream, track,
-    /// remote, remote branch, tab-separated)
-    static func unpushedBranches(_ commits: [UnpushedCommit], refs: String, current: String?) -> [RepoStatus.UnpushedBranch] {
-        var upstreams: [String: (upstream: String, track: String, remote: String, remoteRef: String)] = [:]
-        for line in refs.split(separator: "\n") {
+    /// The branches whose tip is an unpushed commit, from `git for-each-ref`
+    /// (name, tip, upstream, track, push remote, tab-separated). Their counts
+    /// are filled in afterwards.
+    static func unpushedBranches(_ refs: String, unpushed: Set<String>) -> [RepoStatus.UnpushedBranch] {
+        refs.split(separator: "\n").compactMap { line in
             let parts = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            guard parts.count == 5 else { continue }
-            upstreams[parts[0]] = (parts[1], parts[2], parts[3], parts[4])
-        }
-        let counts = Dictionary(commits.map { ($0.branch, 1) }, uniquingKeysWith: +)
-        return counts.map { name, count in
-            var branch = RepoStatus.UnpushedBranch(name: name, commits: count)
-            if let info = upstreams[name], !info.upstream.isEmpty {
-                branch.upstream = info.upstream
-                branch.upstreamGone = info.track == "[gone]"
-                // "." is a branch tracking another local branch: no remote to push back to
-                if info.remote != "." && !info.remote.isEmpty && !info.remoteRef.isEmpty {
-                    branch.remote = info.remote
-                    branch.remoteRef = info.remoteRef
-                }
+            guard parts.count == 5, unpushed.contains(parts[1]) else { return nil }
+            var branch = RepoStatus.UnpushedBranch(name: parts[0], commits: 0)
+            if !parts[2].isEmpty {
+                branch.upstream = parts[2]
+                branch.upstreamGone = parts[3] == "[gone]"
             }
+            // "." is a branch tracking another local branch: no remote there
+            if !parts[4].isEmpty && parts[4] != "." { branch.remote = parts[4] }
             return branch
         }
-        .sorted { a, b in
+    }
+
+    /// The current branch first, then the most commits, then by name
+    static func ordered(_ branches: [RepoStatus.UnpushedBranch], current: String?) -> [RepoStatus.UnpushedBranch] {
+        branches.sorted { a, b in
             if (a.name == current) != (b.name == current) { return a.name == current }
             if a.commits != b.commits { return a.commits > b.commits }
             return a.name < b.name

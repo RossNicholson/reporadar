@@ -331,11 +331,33 @@ final class GitTests: XCTestCase {
         let main = try XCTUnwrap(repo.unpushedBranches.first { $0.name == "main" })
         XCTAssertEqual(main.upstream, "origin/main")
         XCTAssertEqual(main.remote, "origin")
-        XCTAssertEqual(main.remoteRef, "refs/heads/main")
+        XCTAssertEqual(main.commits, 1)
         let feature = try XCTUnwrap(repo.unpushedBranches.first { $0.name == "feature" })
-        XCTAssertEqual(feature.commits, 2)
+        XCTAssertEqual(feature.commits, 3, "feature has main's unpushed commit too")
         XCTAssertNil(feature.upstream)
-        XCTAssertEqual(repo.unpushedBranches.map(\.commits).reduce(0, +), repo.unpushed)
+    }
+
+    func testBranchesSharingATipAreBothListed() async throws {
+        let (_, clone) = try clonedRepo()
+        try commit("a.txt", "a", in: clone)
+        try sh(["branch", "copy"], in: clone)
+        let repo = await inspect(clone)
+        XCTAssertEqual(Set(repo.unpushedBranches.map(\.name)), ["main", "copy"])
+        XCTAssertEqual(repo.unpushedBranches.map(\.commits), [1, 1])
+
+        let outcome = await RepoActions.push(repo, git: git)
+        XCTAssertTrue(outcome.succeeded, outcome.message)
+        let after = try sh(["ls-remote", "--heads", "origin"], in: clone)
+        XCTAssertTrue(after.contains("refs/heads/copy"), "the branch sharing main's tip was pushed too")
+    }
+
+    func testATagWithABranchsNameDoesntHideItsUpstream() async throws {
+        let (_, clone) = try clonedRepo()
+        try commit("a.txt", "a", in: clone)
+        try sh(["tag", "main"], in: clone)
+        let repo = await inspect(clone)
+        XCTAssertEqual(repo.unpushedBranches.first?.name, "main")
+        XCTAssertEqual(repo.unpushedBranches.first?.upstream, "origin/main")
     }
 
     func testLooseSinceIsTheOldestEdit() async throws {
@@ -374,6 +396,41 @@ final class GitTests: XCTestCase {
         XCTAssertEqual(after.unpushed, 0)
         XCTAssertEqual(after.upstream, "origin/feature", "a branch pushed for the first time gets an upstream")
         XCTAssertFalse(after.needsAttention)
+    }
+
+    func testPushNeverLandsOnABranchWithAnotherName() async throws {
+        let (remote, clone) = try clonedRepo()
+        // A branch made from origin/main tracks it
+        try sh(["checkout", "-b", "topic", "origin/main"], in: clone)
+        try commit("t.txt", "t", in: clone)
+        let repo = await inspect(clone)
+        XCTAssertEqual(repo.unpushedBranches.first?.upstream, "origin/main")
+
+        let outcome = await RepoActions.push(repo, git: git)
+        XCTAssertTrue(outcome.succeeded, outcome.message)
+        let mainLog = try sh(["log", "--format=%s", "main"], in: remote)
+        XCTAssertFalse(mainLog.contains("Change t.txt"), "nothing landed on the remote's main")
+        let topicLog = try sh(["log", "--format=%s", "topic"], in: remote)
+        XCTAssertTrue(topicLog.contains("Change t.txt"), "it went to a branch of its own name")
+        let upstream = try sh(["rev-parse", "--abbrev-ref", "topic@{upstream}"], in: clone)
+        XCTAssertEqual(upstream.trimmingCharacters(in: .whitespacesAndNewlines), "origin/main", "its upstream is left as it was")
+    }
+
+    func testPushGoesToTheBranchsPushRemote() async throws {
+        let (remote, clone) = try clonedRepo()
+        let fork = folder("fork.git")
+        try sh(["init", "--bare", fork], in: root.path)
+        try sh(["remote", "add", "fork", fork], in: clone)
+        try sh(["checkout", "-b", "feature", "origin/main"], in: clone)
+        try sh(["config", "branch.feature.pushRemote", "fork"], in: clone)
+        try commit("f.txt", "f", in: clone)
+        let repo = await inspect(clone)
+        XCTAssertEqual(repo.unpushedBranches.first?.remote, "fork")
+
+        let outcome = await RepoActions.push(repo, git: git)
+        XCTAssertTrue(outcome.succeeded, outcome.message)
+        XCTAssertTrue(try sh(["branch", "--list", "feature"], in: fork).contains("feature"), "it went to the fork")
+        XCTAssertFalse(try sh(["branch", "--list", "feature"], in: remote).contains("feature"), "not to the original")
     }
 
     func testPushLeavesADeletedRemoteBranchAlone() async throws {
@@ -424,6 +481,8 @@ final class GitTests: XCTestCase {
         let outcome = await RepoActions.pull(before, git: git)
         XCTAssertTrue(outcome.succeeded, outcome.message)
         XCTAssertEqual(outcome.message, "Pulled 1 commit.")
+        let again = await RepoActions.pull(before, git: git)
+        XCTAssertEqual(again.message, "Already up to date.", "it says what happened, not what the old list said")
         let after = await inspect(clone)
         XCTAssertEqual(after.behind, 0)
         XCTAssertEqual(after.changed, 1, "the uncommitted edit is untouched")

@@ -29,8 +29,7 @@ enum Demo {
             .init(path: "notes.txt", kind: .untracked),
         ]
         weather.unpushedBranches = [
-            .init(name: "feature/radar-map", commits: 2, upstream: "origin/feature/radar-map",
-                  remote: "origin", remoteRef: "refs/heads/feature/radar-map"),
+            .init(name: "feature/radar-map", commits: 2, upstream: "origin/feature/radar-map", remote: "origin"),
             .init(name: "fix/rain-icons", commits: 1),
         ]
 
@@ -56,8 +55,7 @@ enum Demo {
         api.remotes = github
         api.lastCommit = ago(2)
         api.looseSince = ago(2)
-        api.unpushedBranches = [.init(name: "main", commits: 1, upstream: "origin/main",
-                                      remote: "origin", remoteRef: "refs/heads/main")]
+        api.unpushedBranches = [.init(name: "main", commits: 1, upstream: "origin/main", remote: "origin")]
 
         var cli = RepoStatus(path: "\(folder)/dotfiles")
         cli.branch = "main"

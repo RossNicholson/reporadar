@@ -10,24 +10,23 @@ enum RepoActions {
 
     // MARK: - Push
 
-    /// Pushes every branch with commits no remote has: to its upstream, or for
-    /// a branch never pushed, to origin (or the only remote), setting it as
-    /// the upstream. A branch whose remote branch was deleted is left alone.
+    /// Pushes every branch with commits no remote has, each to the branch of
+    /// the same name on the remote git would push it to (its pushRemote, the
+    /// repo's pushDefault or its upstream's remote; origin or the only remote
+    /// for one with none). Never to a branch with another name, so a branch
+    /// made from origin/main can't land on main. A branch with no upstream
+    /// gets this one. A branch whose remote branch was deleted is left alone.
     static func push(_ repo: RepoStatus, git: Git) async -> Outcome {
         var pushed: [String] = []
         var problems: [String] = []
         for branch in repo.pushableBranches {
-            var arguments = ["push", "--porcelain"]
-            if let remote = branch.remote, let remoteRef = branch.remoteRef {
-                arguments += [remote, "refs/heads/\(branch.name):\(remoteRef)"]
-            } else if let remote = defaultRemote(of: repo) {
-                // Only claim it as the upstream if the branch has none (not one tracking a local branch)
-                if branch.upstream == nil { arguments.append("--set-upstream") }
-                arguments += [remote, "refs/heads/\(branch.name):refs/heads/\(branch.name)"]
-            } else {
+            guard let remote = branch.remote ?? defaultRemote(of: repo) else {
                 problems.append("\(branch.name) was never pushed and this repo has several remotes. Push it once in a terminal to pick one.")
                 continue
             }
+            var arguments = ["push", "--porcelain"]
+            if branch.upstream == nil { arguments.append("--set-upstream") }
+            arguments += [remote, "refs/heads/\(branch.name):refs/heads/\(branch.name)"]
             do {
                 let output = try await git.run(arguments, in: repo.path, timeout: 90)
                 if output.succeeded {
@@ -59,6 +58,12 @@ enum RepoActions {
     }
 
     static func explainPush(_ output: String, branch: String) -> String {
+        // The remote turned it down itself, e.g. GitHub's branch protection
+        if output.contains("[remote rejected]") {
+            let reason = output.range(of: #"\[remote rejected\] \(([^)]*)\)"#, options: .regularExpression)
+                .map { String(output[$0].dropFirst("[remote rejected] (".count).dropLast()) }
+            return "The remote refused \(branch)\(reason.map { ": \($0)" } ?? "")."
+        }
         if output.contains("[rejected]") || output.contains("non-fast-forward") || output.contains("fetch first") {
             return "The remote has commits on \(branch) that you don't have. Pull them in first."
         }
@@ -73,10 +78,14 @@ enum RepoActions {
     /// Pulls the current branch, only if that's a fast-forward
     static func pull(_ repo: RepoStatus, git: Git) async -> Outcome {
         do {
+            let before = try await git.run(["rev-parse", "HEAD"], in: repo.path).text
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             let output = try await git.run(["pull", "--ff-only", "--no-rebase"], in: repo.path, timeout: 90)
             if output.succeeded {
-                let n = repo.behind
-                return Outcome(succeeded: true, message: "Pulled \(n) commit\(n == 1 ? "" : "s").")
+                // Count what arrived: the list may be out of date
+                let count = try await git.run(["rev-list", "--count", "\(before)..HEAD"], in: repo.path).text
+                let n = Int(count.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+                return Outcome(succeeded: true, message: n == 0 ? "Already up to date." : "Pulled \(n) commit\(n == 1 ? "" : "s").")
             }
             return Outcome(succeeded: false, message: explainPull(output.stderr + "\n" + output.text))
         } catch Git.Failure.timedOut {

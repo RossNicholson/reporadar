@@ -20,6 +20,9 @@ final class RepoStore: ObservableObject {
 
     let prefs: Preferences
     private var git: Git?
+    /// GitHub CLI, for Put on GitHub. Looked for again on each full refresh,
+    /// in case it's been installed since.
+    private var gitHubCLI: GitHubCLI?
     private lazy var watcher = FolderWatcher { [weak self] paths in self?.filesChanged(paths) }
     private var timers: [Timer] = []
     private var cancellables = Set<AnyCancellable>()
@@ -68,6 +71,7 @@ final class RepoStore: ObservableObject {
 
     func start() {
         if git == nil { git = Git.locate() }
+        gitHubCLI = GitHubCLI.locate()
         gitMissing = git == nil
         guard !gitMissing else { return }
 
@@ -143,8 +147,13 @@ final class RepoStore: ObservableObject {
         let statuses = await Self.inspectAll(found.repos, git: git)
         // Keep each repo's last fetch error until its next fetch
         let fetchErrors = Dictionary(repos.compactMap { r in r.fetchError.map { (r.path, $0) } }, uniquingKeysWith: { a, _ in a })
+        // Forget repos that are gone, but not ones on a drive that's unplugged
+        let foundPaths = Set(found.repos)
+        prefs.looseSince = prefs.looseSince.filter { path, _ in
+            foundPaths.contains(path) || found.missing.contains { path.hasPrefix($0 + "/") }
+        }
         repos = Self.sorted(statuses.map { status in
-            var status = status
+            var status = remembering(status)
             status.fetchError = fetchErrors[status.path]
             return status
         })
@@ -163,6 +172,7 @@ final class RepoStore: ObservableObject {
         guard !isScanning else { return }
         isScanning = true
         defer { isScanning = false }
+        gitHubCLI = GitHubCLI.locate()
         let statuses = await Self.inspectAll(repos.map(\.path), git: git)
         for status in statuses { replace(status) }
         prefs.clearEndedSnoozes()
@@ -189,11 +199,27 @@ final class RepoStore: ObservableObject {
 
     private func replace(_ status: RepoStatus) {
         guard let index = repos.firstIndex(where: { $0.path == status.path }) else { return }
-        var status = status
+        var status = remembering(status)
         status.fetchError = repos[index].fetchError
         guard repos[index] != status else { return }
         repos[index] = status
         repos = Self.sorted(repos)
+    }
+
+    /// A repo's loose ends date from the first time they were seen, not the
+    /// latest edit, for as long as it has some
+    private func remembering(_ status: RepoStatus) -> RepoStatus {
+        let (status, since) = Self.remembering(status, since: prefs.looseSince[status.path])
+        if prefs.looseSince[status.path] != since { prefs.looseSince[status.path] = since }
+        return status
+    }
+
+    nonisolated static func remembering(_ status: RepoStatus, since remembered: Date?) -> (RepoStatus, Date?) {
+        guard status.needsAttention else { return (status, nil) }
+        var status = status
+        let since = [remembered, status.looseSince].compactMap { $0 }.min()
+        status.looseSince = since
+        return (status, since)
     }
 
     nonisolated static func inspectAll(_ paths: [String], git: Git, limit: Int = 6) async -> [RepoStatus] {
@@ -288,7 +314,7 @@ final class RepoStore: ObservableObject {
     // MARK: - Push, Pull, Put on GitHub
 
     /// Whether Put on GitHub can be offered: it needs GitHub CLI
-    var hasGitHubCLI: Bool { isDemo || GitHubCLI.locate() != nil }
+    var hasGitHubCLI: Bool { isDemo || gitHubCLI != nil }
 
     func push(_ repo: RepoStatus) async {
         await perform(repo, "Pushing…") { git in await RepoActions.push(repo, git: git) }
@@ -299,7 +325,7 @@ final class RepoStore: ObservableObject {
     }
 
     func publish(_ repo: RepoStatus, name: String, isPrivate: Bool) async {
-        guard let gh = GitHubCLI.locate() else {
+        guard let gh = gitHubCLI ?? GitHubCLI.locate() else {
             outcomes[repo.path] = .init(succeeded: false, message: "GitHub CLI isn't installed. Install it with brew install gh.")
             return
         }

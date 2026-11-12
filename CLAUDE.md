@@ -43,6 +43,12 @@ Ross's decisions (2026-11-12): MIT, public, mascot is a radar dish with a face, 
   bundle ID, cask, repo, DMG and code keep `RepoRadar`, as Ross wants).
 - HouseStyle 1.3.1 renames it in More apps; BrewDock 1.7.3 (Discover + More apps). ClawdBar, KeyBar (resolve
   HouseStyle at build) and Mop Up (pinned, bumped to 1.3.1 on main) show it from their next releases.
+- **Bug fixes on main for 1.1.2** (from a code review), waiting on Ross to run `make release VERSION=1.1.2`:
+  Push only ever goes to the same-named branch, on the remote git itself would push to (pushRemote etc.);
+  per-branch counts via rev-list (branches can share commits); `refname:lstrip=2`; no Put on GitHub on a
+  detached HEAD; "[remote rejected]" explained; Pull counts what actually arrived; git runs on dedicated
+  threads, not the GCD pool; "waiting since" remembered in prefs (`looseSince`); gh located once per refresh.
+- Ross doesn't plan to use it much and will uninstall it locally; the release, cask and site stay up for others.
 - GitHub's macOS arm64 runners were short on capacity on 1.0.0 release day: runs sat queued and were
   cancelled after 15 min ("job was not acquired by Runner"). A fresh `gh workflow run release.yml
   --ref vX.Y.Z -f publish=true` eventually ran; the version comes from the built app, so that's equivalent.

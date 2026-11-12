@@ -91,13 +91,14 @@ struct RepoStatus: Identifiable, Equatable, Sendable {
 
     struct UnpushedBranch: Equatable, Sendable {
         let name: String
-        /// Commits on this branch that no remote has
-        let commits: Int
+        /// Commits on this branch that no remote has. Branches can share
+        /// them, so these can add up to more than `unpushed`.
+        var commits: Int
         /// e.g. "origin/main", nil if the branch was never pushed
         var upstream: String?
-        /// The upstream's remote and branch, for pushing back to it
+        /// Where git would push it: the branch's pushRemote, remote.pushDefault
+        /// or its upstream's remote. Nil for a branch with none of those.
         var remote: String?
-        var remoteRef: String?
         var upstreamGone = false
     }
 
@@ -133,7 +134,8 @@ struct RepoStatus: Identifiable, Equatable, Sendable {
             && !upstreamGone && behind > 0 && ahead == 0
     }
 
-    var canPublish: Bool { error == nil && operation == nil && !hasRemote && hasCommits }
+    /// gh pushes the current branch, so there has to be one
+    var canPublish: Bool { error == nil && operation == nil && !hasRemote && hasCommits && branch != nil }
 
     /// What's going on, most pressing first, for the row's tags
     var issues: [Issue] {

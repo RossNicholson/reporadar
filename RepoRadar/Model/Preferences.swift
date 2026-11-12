@@ -26,6 +26,9 @@ final class Preferences: ObservableObject {
     @Published var reminderMinutes: Int { didSet { defaults.set(reminderMinutes, forKey: Keys.reminderMinutes) } }
     /// The day the reminder last went off, as yyyy-MM-dd
     @Published var lastReminderDay: String? { didSet { defaults.set(lastReminderDay, forKey: Keys.lastReminderDay) } }
+    /// Repo path → since when it has had loose ends, so editing an old
+    /// change again doesn't make it look new. Not shown, so not published.
+    var looseSince: [String: Date] { didSet { defaults.set(looseSince, forKey: Keys.looseSince) } }
 
     enum Keys {
         static let folders = "watchedFolders"
@@ -39,6 +42,7 @@ final class Preferences: ObservableObject {
         static let reminderEnabled = "reminderEnabled"
         static let reminderMinutes = "reminderMinutes"
         static let lastReminderDay = "lastReminderDay"
+        static let looseSince = "looseSince"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -54,6 +58,7 @@ final class Preferences: ObservableObject {
         reminderEnabled = defaults.bool(forKey: Keys.reminderEnabled)
         reminderMinutes = defaults.object(forKey: Keys.reminderMinutes) as? Int ?? (17 * 60 + 30)
         lastReminderDay = defaults.string(forKey: Keys.lastReminderDay)
+        looseSince = (defaults.dictionary(forKey: Keys.looseSince) as? [String: Date]) ?? [:]
     }
 
     func addFolder(_ path: String) {

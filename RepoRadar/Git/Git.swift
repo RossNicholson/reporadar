@@ -58,13 +58,21 @@ struct Git: Sendable {
     }
 
     func run(_ arguments: [String], in directory: String, timeout: TimeInterval = 20) async throws -> Output {
-        let executable = self.executable
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
+        try await Self.runInBackground(executable: executable,
+                                       arguments: ["-c", "core.quotePath=false", "-c", "color.ui=false"] + arguments,
+                                       directory: directory, environment: Self.environment(), timeout: timeout)
+    }
+
+    /// Runs a command on a thread of its own. Waiting for it blocks that
+    /// thread, so it stays off the shared dispatch pool, which a few dozen
+    /// git commands at once (a refresh and a fetch together) could use up.
+    static func runInBackground(executable: URL, arguments: [String], directory: String,
+                                environment: [String: String], timeout: TimeInterval) async throws -> Output {
+        try await withCheckedThrowingContinuation { continuation in
+            Thread.detachNewThread {
                 continuation.resume(with: Result {
-                    try Self.runProcess(executable: executable,
-                                        arguments: ["-c", "core.quotePath=false", "-c", "color.ui=false"] + arguments,
-                                        directory: directory, environment: Self.environment(), timeout: timeout)
+                    try runProcess(executable: executable, arguments: arguments, directory: directory,
+                                   environment: environment, timeout: timeout)
                 })
             }
         }
@@ -84,38 +92,43 @@ struct Git: Sendable {
         process.standardOutput = out
         process.standardError = err
 
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
         do { try process.run() } catch { throw Failure.couldNotStart(error.localizedDescription) }
 
-        // Read both pipes while git runs: one filling up would block it
-        let reads = DispatchGroup()
+        // Read both pipes while git runs, each on its own thread: one filling
+        // up would block git
         let collected = Collected()
-        DispatchQueue.global(qos: .utility).async(group: reads) {
+        let read = DispatchSemaphore(value: 0)
+        Thread.detachNewThread {
             collected.stdout = out.fileHandleForReading.readDataToEndOfFile()
+            read.signal()
         }
-        DispatchQueue.global(qos: .utility).async(group: reads) {
+        Thread.detachNewThread {
             collected.stderr = err.fileHandleForReading.readDataToEndOfFile()
+            read.signal()
         }
 
-        let timer = DispatchWorkItem { [process] in
-            if process.isRunning {
-                collected.timedOut = true
-                process.terminate()
+        if exited.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            if exited.wait(timeout: .now() + 3) == .timedOut {
+                kill(process.processIdentifier, SIGKILL)
             }
+            // Something git started (ssh) may still hold the pipes open, so
+            // don't wait long for the rest of its output
+            _ = read.wait(timeout: .now() + 2)
+            _ = read.wait(timeout: .now() + 2)
+            throw Failure.timedOut
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timer)
-        process.waitUntilExit()
-        timer.cancel()
-        reads.wait()
-
-        if collected.timedOut { throw Failure.timedOut }
+        read.wait()
+        read.wait()
         return Output(status: process.terminationStatus, stdout: collected.stdout,
                       stderr: String(decoding: collected.stderr, as: UTF8.self))
     }
 
-    /// Filled in by the reading threads, read once they've all finished
+    /// Filled in by the reading threads, read once they've both finished
     private final class Collected: @unchecked Sendable {
         var stdout = Data()
         var stderr = Data()
-        var timedOut = false
     }
 }
