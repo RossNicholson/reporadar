@@ -275,7 +275,7 @@ struct WelcomeCard: View {
             Text("Find your loose ends")
                 .font(.display(26, relativeTo: .title))
                 .textCase(.uppercase)
-            Text("Choose the folder your projects live in. RepoRadar finds every git repo inside and shows the ones with work you haven't committed or pushed.")
+            Text("Choose the folder your projects live in. Repo Radar finds every git repo inside and shows the ones with work you haven't committed or pushed.")
                 .font(.mono(10.5))
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(FolderPicker.suggestions, id: \.self) { folder in
@@ -312,7 +312,7 @@ struct GitMissingCard: View {
             Text("Git isn't installed")
                 .font(.display(26, relativeTo: .title))
                 .textCase(.uppercase)
-            Text("RepoRadar uses the git on your Mac. Apple's comes with its free Command Line Tools: install them, then check again.")
+            Text("Repo Radar uses the git on your Mac. Apple's comes with its free Command Line Tools: install them, then check again.")
                 .font(.mono(10.5))
                 .fixedSize(horizontal: false, vertical: true)
             HStack {

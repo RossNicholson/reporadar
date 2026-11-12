@@ -40,7 +40,7 @@ enum MenuBarIcon {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "RepoRadar"
+        image.accessibilityDescription = "Repo Radar"
         return image
     }
 }

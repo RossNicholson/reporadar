@@ -71,9 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         button.title = count > 0 ? " \(count)" : ""
         button.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium)
         button.toolTip = switch count {
-        case 0: "RepoRadar: all clear"
-        case 1: "RepoRadar: 1 repo needs you"
-        default: "RepoRadar: \(count) repos need you"
+        case 0: "Repo Radar: all clear"
+        case 1: "Repo Radar: 1 repo needs you"
+        default: "Repo Radar: \(count) repos need you"
         }
     }
 

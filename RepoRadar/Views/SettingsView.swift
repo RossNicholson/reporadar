@@ -16,7 +16,7 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            PopoverHeader(title: "Settings", subtitle: "RepoRadar preferences")
+            PopoverHeader(title: "Settings", subtitle: "Repo Radar preferences")
                 .padding(.bottom, 4)
 
             foldersCard
@@ -50,7 +50,7 @@ struct SettingsView: View {
                 ignoredCard
             }
 
-            SettingToggle(title: "Launch at login", detail: "Start RepoRadar when you log in",
+            SettingToggle(title: "Launch at login", detail: "Start Repo Radar when you log in",
                           isOn: Binding(get: { launchAtLogin }, set: { setLaunchAtLogin($0) })) {
                 if let loginItemError {
                     SettingNote(loginItemError)
@@ -65,7 +65,7 @@ struct SettingsView: View {
     // MARK: - Folders
 
     private var foldersCard: some View {
-        SettingCard(title: "Watched folders", detail: "RepoRadar looks for repos inside these", below: {
+        SettingCard(title: "Watched folders", detail: "Repo Radar looks for repos inside these", below: {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(prefs.folders, id: \.self) { folder in
                     HStack(spacing: 6) {
@@ -196,7 +196,7 @@ struct SettingsView: View {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
             DispatchQueue.main.async {
                 prefs.reminderEnabled = granted
-                if !granted { notificationError = "Allow RepoRadar in System Settings → Notifications." }
+                if !granted { notificationError = "Allow Repo Radar in System Settings → Notifications." }
             }
         }
     }
@@ -215,7 +215,7 @@ struct SettingsView: View {
         let status = SMAppService.mainApp.status
         launchAtLogin = status == .enabled
         if enabled && status == .requiresApproval {
-            loginItemError = "Allow RepoRadar in System Settings → General → Login Items."
+            loginItemError = "Allow Repo Radar in System Settings → General → Login Items."
             SMAppService.openSystemSettingsLoginItems()
         }
     }

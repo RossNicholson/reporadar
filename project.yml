@@ -29,7 +29,8 @@ targets:
     info:
       path: RepoRadar/Info.plist
       properties:
-        CFBundleDisplayName: RepoRadar
+        CFBundleName: Repo Radar
+        CFBundleDisplayName: Repo Radar
         CFBundleShortVersionString: "1.1.0"
         CFBundleVersion: "3"
         LSUIElement: true

@@ -4,6 +4,6 @@
 @_exported import HouseStyle
 
 extension AppInfo {
-    static let repoRadar = AppInfo(name: "RepoRadar", repo: "reporadar", cask: "reporadar",
-                                   coffeeLine: "If RepoRadar catches your loose ends")
+    static let repoRadar = AppInfo(name: "Repo Radar", repo: "reporadar", cask: "reporadar",
+                                   coffeeLine: "If Repo Radar catches your loose ends")
 }
