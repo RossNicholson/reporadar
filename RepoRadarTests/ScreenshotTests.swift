@@ -112,8 +112,8 @@ final class ScreenshotTests: XCTestCase {
             .environmentObject(prefs)
             .frame(width: 302)
             .padding(14)
-            .background(AppColors.ground)
-        try Snapshot.png(row, size: NSSize(width: 330, height: 118), to: out.appendingPathComponent("row-hover.png"))
+        try Snapshot.png(row, size: NSSize(width: 330, height: 118), to: out.appendingPathComponent("row-hover.png"),
+                         transparent: true)
 
         try Snapshot.png(ShareCard(), size: NSSize(width: 1200, height: 630), to: out.appendingPathComponent("og-image.png"),
                          exactPixels: true)

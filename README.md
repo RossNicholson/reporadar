@@ -63,6 +63,10 @@ Under **Worth a look**, without counting in the menu bar: **Behind** (commits on
 
 ## Features
 
+<p align="center">
+  <img src="docs/row-hover.png" alt="A repo card with buttons to open it in Finder, Terminal or an editor" width="330">
+</p>
+
 - **Finds your repos.** Watch one folder or several. It skips `node_modules`, Unity's `Library`, `DerivedData`, build folders and the like, and doesn't count a repo inside another one.
 - **Live.** It watches the folders, so the list updates as you work, commit and push. A watched drive that's unplugged shows as *not connected* until it's back.
 - **Open from the list.** Click a repo to open it in Finder, your terminal or your editor (you choose which). Hover for quick buttons, or right-click for Open on GitHub, Copy Path, Snooze and Ignore.
@@ -78,7 +82,7 @@ RepoRadar only reads. It never commits, pushes, pulls or changes a repo: `git fe
 
 ## Privacy
 
-RepoRadar has no accounts and no analytics. It runs git on your Mac and keeps its settings in its own preferences. The only network traffic is `git fetch` to your own remotes (when you fetch, or in the background if you turn that on), using your existing git sign-in, and the update check, which asks GitHub for the latest release.
+RepoRadar has no accounts and no analytics. It runs git on your Mac and keeps its settings in its own preferences. The only network traffic is `git fetch` to your own remotes (when you fetch, or in the background if you turn that on), using your existing git sign-in, and **Check for updates** in Settings, only when you press it (through Homebrew, or GitHub if you downloaded the app directly).
 
 ## Build from source
 
