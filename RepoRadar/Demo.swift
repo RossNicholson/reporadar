@@ -19,6 +19,20 @@ enum Demo {
         weather.ahead = 3
         weather.remotes = github
         weather.lastCommit = ago(0.2)
+        weather.looseSince = ago(5.3)
+        weather.changedFiles = [
+            .init(path: "Sources/Map/RadarLayer.swift", kind: .modified),
+            .init(path: "Sources/Map/MapView.swift", kind: .modified),
+            .init(path: "Sources/Forecast/Hourly.swift", kind: .modified),
+            .init(path: "README.md", kind: .modified),
+            .init(path: "Sources/Map/Tiles/", kind: .untracked),
+            .init(path: "notes.txt", kind: .untracked),
+        ]
+        weather.unpushedBranches = [
+            .init(name: "feature/radar-map", commits: 2, upstream: "origin/feature/radar-map",
+                  remote: "origin", remoteRef: "refs/heads/feature/radar-map"),
+            .init(name: "fix/rain-icons", commits: 1),
+        ]
 
         var site = RepoStatus(path: "\(folder)/portfolio-site")
         site.branch = "main"
@@ -27,6 +41,8 @@ enum Demo {
         site.conflicts = 1
         site.remotes = github
         site.lastCommit = ago(1)
+        site.looseSince = ago(1.2)
+        site.changedFiles = [.init(path: "src/pages/about.astro", kind: .conflict)]
 
         var notes = RepoStatus(path: "\(folder)/recipe-notes")
         notes.branch = "main"
@@ -39,6 +55,9 @@ enum Demo {
         api.ahead = 1
         api.remotes = github
         api.lastCommit = ago(2)
+        api.looseSince = ago(2)
+        api.unpushedBranches = [.init(name: "main", commits: 1, upstream: "origin/main",
+                                      remote: "origin", remoteRef: "refs/heads/main")]
 
         var cli = RepoStatus(path: "\(folder)/dotfiles")
         cli.branch = "main"

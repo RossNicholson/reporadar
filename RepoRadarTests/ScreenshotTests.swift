@@ -102,7 +102,7 @@ final class ScreenshotTests: XCTestCase {
         let out = try outputFolder("SCREENSHOTS")
         try Snapshot.png(MenuBarStrip(), size: NSSize(width: 336, height: 34), to: out.appendingPathComponent("menubar.png"),
                          transparent: true)
-        try Snapshot.png(ReminderBanner().frame(width: 380, height: 116), size: NSSize(width: 380, height: 116), to: out.appendingPathComponent("notification.png"),
+        try Snapshot.png(ReminderBanner().frame(width: 380, height: 132), size: NSSize(width: 380, height: 132), to: out.appendingPathComponent("notification.png"),
                          transparent: true)
 
         let (store, prefs) = demo()
@@ -114,6 +114,30 @@ final class ScreenshotTests: XCTestCase {
             .padding(14)
         try Snapshot.png(row, size: NSSize(width: 330, height: 118), to: out.appendingPathComponent("row-hover.png"),
                          transparent: true)
+
+        let details = RepoRow(repo: weather, previewExpanded: true)
+            .environmentObject(store)
+            .environmentObject(prefs)
+            .frame(width: 302)
+            .padding(14)
+        try Snapshot.png(details, size: NSSize(width: 330, height: 420), to: out.appendingPathComponent("row-details.png"),
+                         transparent: true)
+
+        let (doneStore, donePrefs) = demo()
+        doneStore.showDemo(Demo.repos, outcomes: [
+            Demo.repos[3].path: .init(succeeded: false, message: "The remote has commits on main that you don't have. Pull them in first."),
+        ])
+        let failed = RepoRow(repo: Demo.repos[3])
+            .environmentObject(doneStore)
+            .environmentObject(donePrefs)
+            .frame(width: 302)
+            .padding(14)
+        try Snapshot.png(failed, size: NSSize(width: 330, height: 170), to: out.appendingPathComponent("row-outcome.png"),
+                         transparent: true)
+
+        try Snapshot.panel(to: out.appendingPathComponent("publish.png")) {
+            PublishPopover(folder: "recipe notes", create: { _, _ in }, cancel: {})
+        }
 
         try Snapshot.png(ShareCard(), size: NSSize(width: 1200, height: 630), to: out.appendingPathComponent("og-image.png"),
                          exactPixels: true)
@@ -188,7 +212,7 @@ private struct ReminderBanner: View {
                     Spacer()
                     Text("now").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-                Text("weather-app, portfolio-site and 2 more have work that isn't committed or pushed.")
+                Text("weather-app, portfolio-site and 2 more have work that isn't committed or pushed. weather-app has been waiting 5 days.")
                     .font(.system(size: 12))
                     .fixedSize(horizontal: false, vertical: true)
             }

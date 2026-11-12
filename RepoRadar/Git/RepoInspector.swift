@@ -20,12 +20,23 @@ enum RepoInspector {
                 repo.lastCommit = Date(timeIntervalSince1970: seconds)
             }
 
-            // Every commit on a local branch that no remote has. Without a
-            // remote that's every commit, which "No remote" already says.
+            // Every commit on a local branch that no remote has, with its time
+            // and the branch it was found on. Without a remote that's every
+            // commit, which "No remote" already says.
+            var oldestCommit: Date?
             if repo.hasRemote && repo.hasCommits {
-                let count = try await git.run(["rev-list", "--count", "--branches", "--not", "--remotes"], in: path)
-                repo.unpushed = Int(count.text.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+                let log = try await git.run(["log", "--branches", "--not", "--remotes", "--source", "--format=%ct%x09%S"], in: path)
+                let commits = StatusParser.unpushedCommits(log.text)
+                repo.unpushed = commits.count
+                oldestCommit = commits.map(\.date).min()
+                if !commits.isEmpty {
+                    let refs = try await git.run(["for-each-ref", "refs/heads",
+                                                  "--format=%(refname:short)%09%(upstream:short)%09%(upstream:track)%09%(upstream:remotename)%09%(upstream:remoteref)"],
+                                                 in: path)
+                    repo.unpushedBranches = StatusParser.unpushedBranches(commits, refs: refs.text, current: repo.branch)
+                }
             }
+            repo.looseSince = ([oldestCommit] + editDates(of: repo.changedFiles, in: path)).compactMap { $0 }.min()
         } catch Git.Failure.timedOut {
             repo.error = "git took too long to answer"
         } catch {
@@ -33,6 +44,15 @@ enum RepoInspector {
         }
         repo.operation = operation(in: gitDirectory(for: path))
         return repo
+    }
+
+    /// When each changed file was last edited. Deleted files have no date.
+    static func editDates(of files: [RepoStatus.ChangedFile], in path: String,
+                          fileManager: FileManager = .default) -> [Date?] {
+        files.filter { $0.kind != .deleted }.map { file in
+            let full = (path as NSString).appendingPathComponent(file.path)
+            return (try? fileManager.attributesOfItem(atPath: full))?[.modificationDate] as? Date
+        }
     }
 
     /// The repo's .git folder. In a worktree or submodule .git is a file
@@ -74,6 +94,9 @@ enum RepoInspector {
 
 /// Reads `git status --porcelain=v2 --branch --show-stash -z`
 enum StatusParser {
+    /// How many changed files a repo keeps the names of. The counts go on past it.
+    static let fileLimit = 200
+
     static func apply(_ output: Data, to repo: inout RepoStatus) {
         let fields = output.split(separator: 0, omittingEmptySubsequences: true)
             .map { String(decoding: $0, as: UTF8.self) }
@@ -101,19 +124,84 @@ enum StatusParser {
                 }
                 continue
             }
+            // Each entry is space-separated fields, then the path, which may itself have spaces
+            func path(after fieldCount: Int) -> String? {
+                let parts = field.split(separator: " ", maxSplits: fieldCount, omittingEmptySubsequences: false)
+                return parts.count > fieldCount ? String(parts[fieldCount]) : nil
+            }
+            func add(_ path: String?, _ kind: RepoStatus.ChangedFile.Kind) {
+                guard let path, repo.changedFiles.count < fileLimit else { return }
+                repo.changedFiles.append(.init(path: path, kind: kind))
+            }
             switch field.first {
-            case "1": repo.changed += 1
+            case "1":
+                repo.changed += 1
+                let xy = Array(field.dropFirst(2).prefix(2))
+                let kind: RepoStatus.ChangedFile.Kind = xy.first == "A" ? .added : xy.contains("D") ? .deleted : .modified
+                add(path(after: 8), kind)
             case "2":
                 repo.changed += 1
+                add(path(after: 9), .renamed)
                 index += 1      // a rename's original path follows as its own field
-            case "u": repo.conflicts += 1
-            case "?": repo.untracked += 1
+            case "u":
+                repo.conflicts += 1
+                add(path(after: 10), .conflict)
+            case "?":
+                repo.untracked += 1
+                add(String(field.dropFirst(2)), .untracked)
             default: break
             }
         }
         // git leaves out ahead/behind when the upstream branch no longer
         // exists, and also before the first commit, when there's nothing to compare
         repo.upstreamGone = repo.upstream != nil && !sawAheadBehind && repo.hasCommits
+    }
+
+    struct UnpushedCommit: Equatable {
+        let date: Date
+        /// The branch git reached it from first
+        let branch: String
+    }
+
+    /// Reads `git log --source --format=%ct%x09%S`
+    static func unpushedCommits(_ output: String) -> [UnpushedCommit] {
+        output.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
+            guard parts.count == 2, let seconds = TimeInterval(parts[0]) else { return nil }
+            let branch = parts[1].hasPrefix("refs/heads/") ? String(parts[1].dropFirst("refs/heads/".count)) : parts[1]
+            return UnpushedCommit(date: Date(timeIntervalSince1970: seconds), branch: branch)
+        }
+    }
+
+    /// The branches the unpushed commits are on, the current one first, with
+    /// each one's upstream from `git for-each-ref` (name, upstream, track,
+    /// remote, remote branch, tab-separated)
+    static func unpushedBranches(_ commits: [UnpushedCommit], refs: String, current: String?) -> [RepoStatus.UnpushedBranch] {
+        var upstreams: [String: (upstream: String, track: String, remote: String, remoteRef: String)] = [:]
+        for line in refs.split(separator: "\n") {
+            let parts = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 5 else { continue }
+            upstreams[parts[0]] = (parts[1], parts[2], parts[3], parts[4])
+        }
+        let counts = Dictionary(commits.map { ($0.branch, 1) }, uniquingKeysWith: +)
+        return counts.map { name, count in
+            var branch = RepoStatus.UnpushedBranch(name: name, commits: count)
+            if let info = upstreams[name], !info.upstream.isEmpty {
+                branch.upstream = info.upstream
+                branch.upstreamGone = info.track == "[gone]"
+                // "." is a branch tracking another local branch: no remote to push back to
+                if info.remote != "." && !info.remote.isEmpty && !info.remoteRef.isEmpty {
+                    branch.remote = info.remote
+                    branch.remoteRef = info.remoteRef
+                }
+            }
+            return branch
+        }
+        .sorted { a, b in
+            if (a.name == current) != (b.name == current) { return a.name == current }
+            if a.commits != b.commits { return a.commits > b.commits }
+            return a.name < b.name
+        }
     }
 
     /// Reads `git config --get-regexp ^remote\..*\.url$`

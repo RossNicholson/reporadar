@@ -16,6 +16,8 @@ extension RepoStatus.Level {
 
 /// One repo with loose ends: a pastel block with its name, branch and tags.
 /// Clicking it opens it; hovering shows quick buttons; right-click has the rest.
+/// The chevron shows which branches and files; Push, Pull or Put on GitHub
+/// sit underneath when they apply.
 struct RepoRow: View {
     @EnvironmentObject private var store: RepoStore
     @EnvironmentObject private var prefs: Preferences
@@ -23,36 +25,56 @@ struct RepoRow: View {
     var snoozed = false
     /// Shows the hover buttons without a mouse, for screenshots
     var previewHover = false
+    /// Starts with the details open, for screenshots
+    var previewExpanded = false
     @State private var hovered = false
+    @State private var expanded = false
+    @State private var publishing = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(repo.name)
-                    .font(.display(18, relativeTo: .headline))
-                    .textCase(.uppercase)
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.mono(9.5))
-                    .opacity(0.72)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                FlowLayout(spacing: 4) {
-                    ForEach(repo.issues, id: \.self) { issue in
-                        TagPill(text: issue.tag, fill: AppColors.ink, foreground: repo.level.fill)
-                            .help(issue.explanation)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(repo.name)
+                        .font(.display(18, relativeTo: .headline))
+                        .textCase(.uppercase)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.mono(9.5))
+                        .opacity(0.72)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    FlowLayout(spacing: 4) {
+                        ForEach(repo.issues, id: \.self) { issue in
+                            TagPill(text: issue.tag, fill: AppColors.ink, foreground: repo.level.fill)
+                                .help(issue.explanation)
+                        }
+                        if let fetchError = repo.fetchError {
+                            TagPill(text: "Fetch failed", fill: AppColors.ink.opacity(0.14), foreground: AppColors.ink)
+                                .help("The last fetch failed: \(fetchError)")
+                        }
                     }
-                    if let fetchError = repo.fetchError {
-                        TagPill(text: "Fetch failed", fill: AppColors.ink.opacity(0.14), foreground: AppColors.ink)
-                            .help("The last fetch failed: \(fetchError)")
+                    .padding(.top, 2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 4) {
+                    if hovered || previewHover {
+                        quickButtons
+                    }
+                    if hasDetails {
+                        RoundIconButton(symbol: "chevron.down", size: 22, fill: AppColors.ink.opacity(0.1),
+                                        foreground: AppColors.ink, help: isExpanded ? "Hide details" : "Show details") {
+                            withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+                        }
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
                     }
                 }
-                .padding(.top, 2)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            if hovered || previewHover {
-                quickButtons
+            if isExpanded {
+                RepoDetails(repo: repo)
+                    .padding(.top, 8)
             }
+            actions
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -63,11 +85,19 @@ struct RepoRow: View {
         .onTapGesture { openDefault() }
         .contextMenu { RepoMenu(repo: repo, snoozed: snoozed) }
         .help(repo.path)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(repo.name). \(repo.issues.map(\.explanation).joined(separator: " "))")
-        .accessibilityAddTraits(.isButton)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(repo.name). \(waitingText.map { "Waiting \($0). " } ?? "")\(repo.issues.map(\.explanation).joined(separator: " "))")
         .accessibilityAction(named: "Open in Finder") { Opener.finder(repo.path) }
         .accessibilityAction(named: "Open in Terminal") { Opener.open(repo.path, in: prefs.terminalApp) }
+    }
+
+    private var isExpanded: Bool { expanded || previewExpanded }
+    private var hasDetails: Bool { !repo.changedFiles.isEmpty || !repo.unpushedBranches.isEmpty }
+
+    /// How long the oldest loose end has waited, once it's a day or more
+    private var waitingText: String? {
+        guard repo.needsAttention, let since = repo.looseSince else { return nil }
+        return Waiting.duration(since: since)
     }
 
     private var subtitle: String {
@@ -80,7 +110,9 @@ struct RepoRow: View {
         if !repo.hasCommits {
             parts.append("no commits yet")
         }
-        if let last = repo.lastCommit {
+        if let waiting = waitingText {
+            parts.append("waiting \(waiting)")
+        } else if let last = repo.lastCommit {
             parts.append(Self.age(of: last))
         }
         return parts.joined(separator: " · ")
@@ -113,6 +145,63 @@ struct RepoRow: View {
                 }
             }
         }
+    }
+
+    // MARK: - Push, Pull, Put on GitHub
+
+    private var offersPublish: Bool { repo.canPublish && store.hasGitHubCLI }
+
+    @ViewBuilder private var actions: some View {
+        let working = store.working[repo.path]
+        let outcome = store.outcomes[repo.path]
+        if working != nil || outcome != nil || repo.canPush || repo.canPull || offersPublish {
+            VStack(alignment: .leading, spacing: 6) {
+                if let working {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text(working).font(.mono(9.5, weight: .semibold))
+                    }
+                    .frame(height: 22)
+                } else if repo.canPush || repo.canPull || offersPublish {
+                    HStack(spacing: 6) {
+                        if repo.canPull {
+                            ActionPill(title: "Pull", symbol: "arrow.down", foreground: repo.level.fill,
+                                       help: "Bring in \(repo.behind) commit\(repo.behind == 1 ? "" : "s") from \(repo.upstream ?? "the remote") (fast-forward only)") {
+                                Task { await store.pull(repo) }
+                            }
+                        }
+                        if repo.canPush {
+                            ActionPill(title: "Push", symbol: "arrow.up", foreground: repo.level.fill, help: pushHelp) {
+                                Task { await store.push(repo) }
+                            }
+                        }
+                        if offersPublish {
+                            ActionPill(title: "Put on GitHub", symbol: "arrow.up.to.line", foreground: repo.level.fill,
+                                       help: "Create a GitHub repo for this and push it") {
+                                publishing = true
+                            }
+                            .popover(isPresented: $publishing, arrowEdge: .bottom) {
+                                PublishPopover(folder: repo.name) { name, isPrivate in
+                                    publishing = false
+                                    Task { await store.publish(repo, name: name, isPrivate: isPrivate) }
+                                } cancel: {
+                                    publishing = false
+                                }
+                            }
+                        }
+                    }
+                }
+                if let outcome {
+                    OutcomeLine(outcome: outcome) { store.dismissOutcome(repo.path) }
+                }
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    private var pushHelp: String {
+        let names = repo.pushableBranches.map(\.name)
+        return "Push \(Reminder.names(names)) (never forced)"
     }
 
     private func openDefault() {

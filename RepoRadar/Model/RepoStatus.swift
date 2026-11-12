@@ -44,10 +44,61 @@ struct RepoStatus: Identifiable, Equatable, Sendable {
     var error: String?
     /// The last background fetch's failure, if it failed
     var fetchError: String?
+    /// The files that aren't committed, up to `StatusParser.fileLimit`
+    var changedFiles: [ChangedFile] = []
+    /// The local branches with commits no remote has
+    var unpushedBranches: [UnpushedBranch] = []
+    /// When the oldest work that isn't committed or pushed was done: the
+    /// oldest changed file's edit or unpushed commit
+    var looseSince: Date?
 
     struct Remote: Equatable, Sendable {
         let name: String
         let url: String
+    }
+
+    struct ChangedFile: Equatable, Hashable, Sendable {
+        enum Kind: Sendable {
+            case modified, added, deleted, renamed, conflict, untracked
+
+            /// The letter `git status --short` would show
+            var letter: String {
+                switch self {
+                case .modified: return "M"
+                case .added: return "A"
+                case .deleted: return "D"
+                case .renamed: return "R"
+                case .conflict: return "U"
+                case .untracked: return "?"
+                }
+            }
+
+            var label: String {
+                switch self {
+                case .modified: return "changed"
+                case .added: return "added"
+                case .deleted: return "deleted"
+                case .renamed: return "renamed"
+                case .conflict: return "conflict"
+                case .untracked: return "new"
+                }
+            }
+        }
+
+        let path: String
+        let kind: Kind
+    }
+
+    struct UnpushedBranch: Equatable, Sendable {
+        let name: String
+        /// Commits on this branch that no remote has
+        let commits: Int
+        /// e.g. "origin/main", nil if the branch was never pushed
+        var upstream: String?
+        /// The upstream's remote and branch, for pushing back to it
+        var remote: String?
+        var remoteRef: String?
+        var upstreamGone = false
     }
 
     var id: String { path }
@@ -67,6 +118,22 @@ struct RepoStatus: Identifiable, Equatable, Sendable {
     }
 
     var isClear: Bool { !needsAttention && !worthALook }
+
+    // MARK: - What can be done about it
+
+    /// Branches Push sends. One whose remote branch was deleted is left alone,
+    /// so a merged pull request's branch doesn't come back.
+    var pushableBranches: [UnpushedBranch] { unpushedBranches.filter { !$0.upstreamGone } }
+
+    var canPush: Bool { error == nil && operation == nil && hasRemote && !pushableBranches.isEmpty }
+
+    /// Only a fast-forward: the current branch is behind and has nothing of its own
+    var canPull: Bool {
+        error == nil && operation == nil && conflicts == 0 && branch != nil && upstream != nil
+            && !upstreamGone && behind > 0 && ahead == 0
+    }
+
+    var canPublish: Bool { error == nil && operation == nil && !hasRemote && hasCommits }
 
     /// What's going on, most pressing first, for the row's tags
     var issues: [Issue] {

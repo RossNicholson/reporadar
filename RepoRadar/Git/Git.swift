@@ -1,8 +1,8 @@
 import Foundation
 
-/// Runs the git that's already on this Mac. RepoRadar never writes to a repo:
-/// every command it runs reads, except `fetch`, which only updates the
-/// remote-tracking branches.
+/// Runs the git that's already on this Mac. Reading a repo never changes it;
+/// `fetch` only updates the remote-tracking branches. The only commands that
+/// change a repo are the Push and Pull you click (see `RepoActions`).
 struct Git: Sendable {
     let executable: URL
 
@@ -62,19 +62,22 @@ struct Git: Sendable {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 continuation.resume(with: Result {
-                    try Self.runBlocking(executable: executable, arguments: arguments, directory: directory, timeout: timeout)
+                    try Self.runProcess(executable: executable,
+                                        arguments: ["-c", "core.quotePath=false", "-c", "color.ui=false"] + arguments,
+                                        directory: directory, environment: Self.environment(), timeout: timeout)
                 })
             }
         }
     }
 
-    private static func runBlocking(executable: URL, arguments: [String], directory: String,
-                                    timeout: TimeInterval) throws -> Output {
+    /// Runs a command to the end, or until the timeout. Shared with `GitHubCLI`.
+    static func runProcess(executable: URL, arguments: [String], directory: String,
+                           environment: [String: String], timeout: TimeInterval) throws -> Output {
         let process = Process()
         process.executableURL = executable
-        process.arguments = ["-c", "core.quotePath=false", "-c", "color.ui=false"] + arguments
+        process.arguments = arguments
         process.currentDirectoryURL = URL(fileURLWithPath: directory)
-        process.environment = environment()
+        process.environment = environment
         process.standardInput = FileHandle.nullDevice
         let out = Pipe()
         let err = Pipe()

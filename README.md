@@ -64,17 +64,19 @@ Under **Worth a look**, without counting in the menu bar: **Behind** (commits on
 ## Features
 
 <p align="center">
-  <img src="docs/row-hover.png" alt="A repo card with buttons to open it in Finder, Terminal or an editor" width="330">
+  <img src="docs/row-details.png" alt="weather-app opened: two branches not on a remote and six files not committed, with a Push button" width="330">
 </p>
 
 - **Finds your repos.** Watch one folder or several. It skips `node_modules`, Unity's `Library`, `DerivedData`, build folders and the like, and doesn't count a repo inside another one.
 - **Live.** It watches the folders, so the list updates as you work, commit and push. A watched drive that's unplugged shows as *not connected* until it's back.
+- **See what's loose.** Open a repo's card for the branches with commits no remote has, and the files that aren't committed. Each card says how long its oldest loose end has been waiting.
+- **Push, Pull, Put on GitHub.** Fix the common ones in a click: **Push** sends every branch with unpushed commits (never forced), **Pull** brings in commits when it's a fast-forward, and **Put on GitHub** creates a GitHub repo for one with no remote, through [GitHub CLI](https://cli.github.com) if you have it.
 - **Open from the list.** Click a repo to open it in Finder, your terminal or your editor (you choose which). Hover for quick buttons, or right-click for Open on GitHub, Copy Path, Snooze and Ignore.
 - **Fetch.** **Fetch all** in the footer, or in the background every 15 minutes or hour, so the behind counts are right. Fetching never changes your files or branches.
-- **End-of-day reminder.** A notification at a time you pick if repos still have loose ends.
+- **End-of-day reminder.** A notification at a time you pick if repos still have loose ends, oldest first.
 - **Snooze or ignore.** Snooze a repo for a day or a week, or ignore it for good (Settings lists ignored repos so you can bring them back).
 
-RepoRadar only reads. It never commits, pushes, pulls or changes a repo: `git fetch` is the only command it runs that talks to a remote, and that only updates remote-tracking branches.
+RepoRadar only reads, until you click Push, Pull or Put on GitHub. It never commits, never force-pushes, and Pull only fast-forwards, so it can't overwrite your work or rewrite history. Otherwise `git fetch` is the only command it runs that talks to a remote, and that only updates remote-tracking branches.
 
 <p align="center">
   <img src="docs/settings.png" alt="RepoRadar's settings: watched folders, where clicking a repo opens it, background fetch, the end-of-day reminder, ignored repos, launch at login and updates" width="300">
@@ -82,7 +84,7 @@ RepoRadar only reads. It never commits, pushes, pulls or changes a repo: `git fe
 
 ## Privacy
 
-RepoRadar has no accounts and no analytics. It runs git on your Mac and keeps its settings in its own preferences. The only network traffic is `git fetch` to your own remotes (when you fetch, or in the background if you turn that on), using your existing git sign-in, and **Check for updates** in Settings, only when you press it (through Homebrew, or GitHub if you downloaded the app directly).
+RepoRadar has no accounts and no analytics. It runs git on your Mac and keeps its settings in its own preferences. The only network traffic is git talking to your own remotes, using your existing git sign-in: `git fetch` (when you fetch, or in the background if you turn that on) and Push or Pull when you click them; GitHub CLI creating a repo when you click Put on GitHub; and **Check for updates** in Settings, only when you press it (through Homebrew, or GitHub if you downloaded the app directly).
 
 ## Build from source
 

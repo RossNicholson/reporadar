@@ -31,10 +31,31 @@ enum Reminder {
         }
     }
 
+    /// The oldest loose ends first, since they're the ones that get lost
+    static func ordered(_ repos: [RepoStatus]) -> [RepoStatus] {
+        repos.enumerated().sorted { a, b in
+            switch (a.element.looseSince, b.element.looseSince) {
+            case let (x?, y?) where x != y: return x < y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return a.offset < b.offset
+            }
+        }.map(\.element)
+    }
+
+    static func body(for repos: [RepoStatus], now: Date = Date()) -> String {
+        let list = ordered(repos)
+        var text = "\(names(list.map(\.name))) \(list.count == 1 ? "has" : "have") work that isn't committed or pushed."
+        if let oldest = list.first, let since = oldest.looseSince, let waited = Waiting.duration(since: since, now: now) {
+            text += list.count == 1 ? " It's been waiting \(waited)." : " \(oldest.name) has been waiting \(waited)."
+        }
+        return text
+    }
+
     static func post(repos: [RepoStatus]) {
         let content = UNMutableNotificationContent()
         content.title = repos.count == 1 ? "1 repo has loose ends" : "\(repos.count) repos have loose ends"
-        content.body = "\(names(repos.map(\.name))) \(repos.count == 1 ? "has" : "have") work that isn't committed or pushed."
+        content.body = body(for: repos)
         let request = UNNotificationRequest(identifier: "reporadar.reminder", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }

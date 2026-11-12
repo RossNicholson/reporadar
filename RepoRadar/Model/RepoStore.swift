@@ -13,6 +13,10 @@ final class RepoStore: ObservableObject {
     @Published private(set) var fetchProgress: (done: Int, total: Int)?
     @Published private(set) var lastChecked: Date?
     @Published private(set) var gitMissing = false
+    /// Push, Pull or Put on GitHub running in a repo: path → "Pushing…"
+    @Published private(set) var working: [String: String] = [:]
+    /// How the last one went, until it's dismissed (or, if it worked, a few seconds)
+    @Published private(set) var outcomes: [String: RepoActions.Outcome] = [:]
 
     let prefs: Preferences
     private var git: Git?
@@ -281,11 +285,59 @@ final class RepoStore: ObservableObject {
         }
     }
 
+    // MARK: - Push, Pull, Put on GitHub
+
+    /// Whether Put on GitHub can be offered: it needs GitHub CLI
+    var hasGitHubCLI: Bool { isDemo || GitHubCLI.locate() != nil }
+
+    func push(_ repo: RepoStatus) async {
+        await perform(repo, "Pushing…") { git in await RepoActions.push(repo, git: git) }
+    }
+
+    func pull(_ repo: RepoStatus) async {
+        await perform(repo, "Pulling…") { git in await RepoActions.pull(repo, git: git) }
+    }
+
+    func publish(_ repo: RepoStatus, name: String, isPrivate: Bool) async {
+        guard let gh = GitHubCLI.locate() else {
+            outcomes[repo.path] = .init(succeeded: false, message: "GitHub CLI isn't installed. Install it with brew install gh.")
+            return
+        }
+        await perform(repo, "Putting it on GitHub…") { git in
+            await gh.publish(repo, name: name, isPrivate: isPrivate, git: git)
+        }
+    }
+
+    func dismissOutcome(_ path: String) {
+        outcomes[path] = nil
+    }
+
+    private func perform(_ repo: RepoStatus, _ label: String,
+                         _ work: @escaping @Sendable (Git) async -> RepoActions.Outcome) async {
+        guard let git, !isDemo, working[repo.path] == nil else { return }
+        let path = repo.path
+        working[path] = label
+        outcomes[path] = nil
+        let outcome = await work(git)
+        working[path] = nil
+        outcomes[path] = outcome
+        await refresh([path])
+        // A success says so briefly; a problem stays until it's dismissed
+        if outcome.succeeded {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+                MainActor.assumeIsolated {
+                    if self?.outcomes[path] == outcome { self?.outcomes[path] = nil }
+                }
+            }
+        }
+    }
+
     // MARK: - Demo
 
     /// Sample repos without git, for screenshots and checking the design
-    func showDemo(_ sample: [RepoStatus], unavailable: [String] = []) {
+    func showDemo(_ sample: [RepoStatus], unavailable: [String] = [], outcomes: [String: RepoActions.Outcome] = [:]) {
         isDemo = true
+        self.outcomes = outcomes
         repos = Self.sorted(sample)
         unavailableFolders = unavailable
         lastChecked = Date().addingTimeInterval(-12)

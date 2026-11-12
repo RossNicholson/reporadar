@@ -299,6 +299,155 @@ final class GitTests: XCTestCase {
         XCTAssertEqual(before, after)
     }
 
+    // MARK: - Details
+
+    func testChangedFilesListed() async throws {
+        let (_, clone) = try clonedRepo()
+        try commit("old.txt", "old", in: clone)
+        try sh(["mv", "old.txt", "renamed.txt"], in: clone)
+        try write("changed", to: "README.md", in: clone)
+        try write("new", to: "notes with spaces.txt", in: clone)
+        try write("staged", to: "staged.txt", in: clone)
+        try sh(["add", "staged.txt"], in: clone)
+        let repo = await inspect(clone)
+        let files = Dictionary(uniqueKeysWithValues: repo.changedFiles.map { ($0.path, $0.kind) })
+        XCTAssertEqual(files["README.md"], .modified)
+        XCTAssertEqual(files["staged.txt"], .added)
+        XCTAssertEqual(files["renamed.txt"], .renamed)
+        XCTAssertEqual(files["notes with spaces.txt"], .untracked)
+        XCTAssertEqual(repo.changedFiles.count, repo.changed + repo.untracked)
+    }
+
+    func testUnpushedBranchesListed() async throws {
+        let (_, clone) = try clonedRepo()
+        try commit("a.txt", "a", in: clone)
+        try sh(["switch", "-c", "feature"], in: clone)
+        try commit("f1.txt", "f", in: clone)
+        try commit("f2.txt", "f", in: clone)
+        try sh(["switch", "main"], in: clone)
+        let repo = await inspect(clone)
+        XCTAssertEqual(repo.unpushed, 3)
+        XCTAssertEqual(repo.unpushedBranches.map(\.name), ["main", "feature"], "the current branch comes first")
+        let main = try XCTUnwrap(repo.unpushedBranches.first { $0.name == "main" })
+        XCTAssertEqual(main.upstream, "origin/main")
+        XCTAssertEqual(main.remote, "origin")
+        XCTAssertEqual(main.remoteRef, "refs/heads/main")
+        let feature = try XCTUnwrap(repo.unpushedBranches.first { $0.name == "feature" })
+        XCTAssertEqual(feature.commits, 2)
+        XCTAssertNil(feature.upstream)
+        XCTAssertEqual(repo.unpushedBranches.map(\.commits).reduce(0, +), repo.unpushed)
+    }
+
+    func testLooseSinceIsTheOldestEdit() async throws {
+        let (_, clone) = try clonedRepo()
+        try write("changed", to: "README.md", in: clone)
+        try write("new", to: "new.txt", in: clone)
+        let threeDaysAgo = Date().addingTimeInterval(-3 * 86_400)
+        try FileManager.default.setAttributes([.modificationDate: threeDaysAgo],
+                                              ofItemAtPath: "\(clone)/README.md")
+        let repo = await inspect(clone)
+        let since = try XCTUnwrap(repo.looseSince)
+        XCTAssertEqual(since.timeIntervalSince1970, threeDaysAgo.timeIntervalSince1970, accuracy: 2)
+    }
+
+    func testCleanRepoHasNoLooseSince() async throws {
+        let (_, clone) = try clonedRepo()
+        let repo = await inspect(clone)
+        XCTAssertNil(repo.looseSince)
+        XCTAssertEqual(repo.changedFiles, [])
+        XCTAssertEqual(repo.unpushedBranches, [])
+    }
+
+    // MARK: - Push and Pull
+
+    func testPushSendsEveryBranch() async throws {
+        let (_, clone) = try clonedRepo()
+        try commit("a.txt", "a", in: clone)
+        try sh(["switch", "-c", "feature"], in: clone)
+        try commit("f.txt", "f", in: clone)
+        let before = await inspect(clone)
+        XCTAssertTrue(before.canPush)
+
+        let outcome = await RepoActions.push(before, git: git)
+        XCTAssertTrue(outcome.succeeded, outcome.message)
+        let after = await inspect(clone)
+        XCTAssertEqual(after.unpushed, 0)
+        XCTAssertEqual(after.upstream, "origin/feature", "a branch pushed for the first time gets an upstream")
+        XCTAssertFalse(after.needsAttention)
+    }
+
+    func testPushLeavesADeletedRemoteBranchAlone() async throws {
+        let (remote, clone) = try clonedRepo()
+        try sh(["switch", "-c", "merged"], in: clone)
+        try commit("m.txt", "m", in: clone)
+        try sh(["push", "-u", "origin", "merged"], in: clone)
+        try commit("m2.txt", "m2", in: clone)
+        try sh(["push", "origin", "--delete", "merged"], in: clone)
+        try sh(["fetch", "--prune"], in: clone)
+        let repo = await inspect(clone)
+        XCTAssertEqual(repo.unpushedBranches.first?.upstreamGone, true)
+        XCTAssertFalse(repo.canPush, "the only unpushed branch's remote branch was deleted")
+
+        let outcome = await RepoActions.push(repo, git: git)
+        XCTAssertFalse(outcome.succeeded)
+        XCTAssertTrue(outcome.message.contains("Left merged alone"), outcome.message)
+        let branches = try sh(["branch", "--list", "merged"], in: remote)
+        XCTAssertEqual(branches.trimmingCharacters(in: .whitespacesAndNewlines), "", "it didn't come back")
+    }
+
+    func testPushIsRejectedWhenTheRemoteMoved() async throws {
+        let (remote, clone) = try clonedRepo()
+        let other = folder("other")
+        try sh(["clone", remote, other], in: root.path)
+        try commit("x.txt", "x", in: other)
+        try sh(["push"], in: other)
+        try commit("y.txt", "y", in: clone)
+
+        let outcome = await RepoActions.push(await inspect(clone), git: git)
+        XCTAssertFalse(outcome.succeeded)
+        XCTAssertTrue(outcome.message.contains("Pull them in first"), outcome.message)
+        let remoteLog = try sh(["log", "--format=%s", "main"], in: remote)
+        XCTAssertTrue(remoteLog.contains("Change x.txt"), "nothing was forced over")
+    }
+
+    func testPullFastForwards() async throws {
+        let (remote, clone) = try clonedRepo()
+        let other = folder("other")
+        try sh(["clone", remote, other], in: root.path)
+        try commit("x.txt", "x", in: other)
+        try sh(["push"], in: other)
+        try sh(["fetch"], in: clone)
+        try write("local edit", to: "README.md", in: clone)
+        let before = await inspect(clone)
+        XCTAssertTrue(before.canPull)
+
+        let outcome = await RepoActions.pull(before, git: git)
+        XCTAssertTrue(outcome.succeeded, outcome.message)
+        XCTAssertEqual(outcome.message, "Pulled 1 commit.")
+        let after = await inspect(clone)
+        XCTAssertEqual(after.behind, 0)
+        XCTAssertEqual(after.changed, 1, "the uncommitted edit is untouched")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: "\(clone)/x.txt"))
+    }
+
+    func testPullRefusesWhenBothMoved() async throws {
+        let (remote, clone) = try clonedRepo()
+        let other = folder("other")
+        try sh(["clone", remote, other], in: root.path)
+        try commit("x.txt", "x", in: other)
+        try sh(["push"], in: other)
+        try commit("y.txt", "y", in: clone)
+        try sh(["fetch"], in: clone)
+        let repo = await inspect(clone)
+        XCTAssertFalse(repo.canPull, "Pull isn't offered when it can't fast-forward")
+
+        let outcome = await RepoActions.pull(repo, git: git)
+        XCTAssertFalse(outcome.succeeded)
+        XCTAssertTrue(outcome.message.contains("both moved on"), outcome.message)
+        let log = try sh(["log", "--format=%s"], in: clone)
+        XCTAssertFalse(log.contains("Merge"), "nothing was merged")
+    }
+
     // MARK: - Finding repos
 
     func testScannerFindsReposAndSkipsTheRest() throws {
