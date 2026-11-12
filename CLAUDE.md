@@ -3,7 +3,7 @@
 Open-source (MIT) macOS menu bar app that lists the local git repos under watched folders that have
 loose ends: uncommitted changes, unpushed commits (on any branch), no remote, mid-merge/rebase. Same
 look as BrewDock, ClawdBar, Mop Up and KeyBar via the shared HouseStyle package. GitHub:
-RossNicholson/reporadar (public). Cask: `reporadar` in RossNicholson/homebrew-tap (not added yet).
+RossNicholson/reporadar (public). Cask: `reporadar` in RossNicholson/homebrew-tap. Page: rossnicholson.dev/reporadar.
 
 Ross's decisions (2026-11-12): MIT, public, mascot is a radar dish with a face, 1.0 is status only
 (no commit/push/pull buttons; Fetch all and the open actions are fine). Not in 1.0: commit, CI status
@@ -37,7 +37,11 @@ Ross's decisions (2026-11-12): MIT, public, mascot is a radar dish with a face, 
 - After dev builds, `lsregister -u` the build copy so it can't hijack launches of the installed app.
 
 ## Where we left off (2026-11-12)
-- v0.1.0 in the repo, not released. All 1.0 features built; 36 tests pass; screenshots checked.
-- To ship 1.0: on-screen check with Ross, add the six CI secrets, add Casks/reporadar.rb to the tap,
-  add RepoRadar to HouseStyle `HouseMacApp` (More apps) and BrewDock Discover, website page
-  (only once finished), then `make release VERSION=1.0.0`.
+- **1.0.0 released** 2026-11-12: GitHub release with notes, notarized universal DMG, cask bumped by CI.
+  Also live: website page + home card + privacy/terms/support/sitemap, HouseStyle 1.3.0 (More apps),
+  BrewDock main has the Discover entry (ships with BrewDock's next release).
+- On main, not released: panel title reads "Repo Radar" (two words; Ross asked, title only, don't
+  rename elsewhere without asking). Next release: 1.0.1 (ask Ross first).
+- GitHub's macOS arm64 runners were short on capacity on release day: three runs sat queued and were
+  cancelled after 15 min ("job was not acquired by Runner"). A fresh `gh workflow run release.yml
+  --ref vX.Y.Z -f publish=true` eventually ran; version comes from the built app, so that's equivalent.
