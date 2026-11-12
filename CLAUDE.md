@@ -39,10 +39,10 @@ Ross's decisions (2026-11-12): MIT, public, mascot is a radar dish with a face, 
 ## Where we left off (2026-11-12)
 - **1.1.0 released** 2026-11-12: details, Push (never forced), Pull (fast-forward only), Put on GitHub
   (GitHub CLI), "waiting N days" ages, oldest-first reminder. Website page + privacy updated and live.
-- On main, not released (next: **1.1.1**, Ross runs `make release`): the name shown as **Repo Radar**
-  (display name, tooltip, About, Settings, messages, share card). Ross wants the visible name only: the
-  .app file, bundle ID, cask, repo, DMG and code keep `RepoRadar`. Website + README already say Repo Radar.
-- Still "RepoRadar" in other apps: HouseStyle `HouseMacApp` (More apps) and BrewDock Discover. Ask Ross.
+- **1.1.1 released** 2026-11-12: the name shown as **Repo Radar** (visible name only; the .app file,
+  bundle ID, cask, repo, DMG and code keep `RepoRadar`, as Ross wants).
+- HouseStyle 1.3.1 renames it in More apps; BrewDock 1.7.3 (Discover + More apps). ClawdBar, KeyBar (resolve
+  HouseStyle at build) and Mop Up (pinned, bumped to 1.3.1 on main) show it from their next releases.
 - GitHub's macOS arm64 runners were short on capacity on 1.0.0 release day: runs sat queued and were
   cancelled after 15 min ("job was not acquired by Runner"). A fresh `gh workflow run release.yml
   --ref vX.Y.Z -f publish=true` eventually ran; the version comes from the built app, so that's equivalent.
