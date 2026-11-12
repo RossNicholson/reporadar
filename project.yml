@@ -31,8 +31,8 @@ targets:
       properties:
         CFBundleName: Repo Radar
         CFBundleDisplayName: Repo Radar
-        CFBundleShortVersionString: "1.1.0"
-        CFBundleVersion: "3"
+        CFBundleShortVersionString: "1.1.1"
+        CFBundleVersion: "4"
         LSUIElement: true
         NSHighResolutionCapable: true
         LSMinimumSystemVersion: "14.0"
