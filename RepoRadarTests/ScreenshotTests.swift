@@ -231,7 +231,7 @@ private struct ShareCard: View {
     var body: some View {
         HStack(spacing: 40) {
             VStack(alignment: .leading, spacing: 18) {
-                Text("RepoRadar").font(.display(44, relativeTo: .title)).textCase(.uppercase).opacity(0.7)
+                Text("Repo Radar").font(.display(44, relativeTo: .title)).textCase(.uppercase).opacity(0.7)
                 Text("Every repo with\nwork you haven't\npushed").font(.display(84, relativeTo: .largeTitle)).textCase(.uppercase)
                     .lineSpacing(-6)
                 Text("A menu bar app for your Mac").font(.mono(22))
